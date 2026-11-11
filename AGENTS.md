@@ -21,7 +21,7 @@ Validation works with Zod, Valibot, ArkType or any other Standard Schema library
 
 `NodeAdapter` from `@nestjs/platform-node` is the fastest HTTP adapter, ahead of Fastify (https://docs.nestjs.com/http/performance.md).
 
-Nest's packages are ESM only, and this project is ESM too: relative imports end in `.js`, `__dirname` doesn't exist (use `import.meta.dirname`), and tests run on Vitest, so mocks are `vi.fn()`, not `jest.fn()`.
+Nest's packages are ESM only, but this project is CommonJS on purpose (no `.js` suffix on relative imports): Bun and Node 26 load the ESM packages through `require(esm)`. Don't add `"type": "module"`. Bun is the runtime, package manager and test runner: tests import from `bun:test`, mocks are `mock()`/`spyOn` from `bun:test`, never Vitest or Jest. Lint is oxlint.
 
 ## Production data: NestJS Observe
 
