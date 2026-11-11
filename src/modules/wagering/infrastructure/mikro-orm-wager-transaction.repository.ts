@@ -15,6 +15,48 @@ export class MikroOrmWagerTransactionRepository extends WagerTransactionReposito
     await this.em.insert(WagerTransactionRecord, WagerTransactionMapper.toRecord(tx));
   }
 
+  async insertIfAbsent(tx: WagerTransaction): Promise<boolean> {
+    const result = await this.em
+      .createQueryBuilder(WagerTransactionRecord)
+      .insert(WagerTransactionMapper.toRecord(tx))
+      .onConflict()
+      .ignore()
+      .execute('run');
+    return result.affectedRows === 1;
+  }
+
+  async update(tx: WagerTransaction): Promise<void> {
+    const r = WagerTransactionMapper.toRecord(tx);
+    const affected = await this.em.nativeUpdate(
+      WagerTransactionRecord,
+      { id: tx.id },
+      {
+        status: r.status,
+        failureCode: r.failureCode,
+        referenceTransactionId: r.referenceTransactionId,
+        outcome: r.outcome,
+        referenceAttempts: r.referenceAttempts,
+        nextRetryAt: r.nextRetryAt,
+        processedAt: r.processedAt,
+      },
+    );
+    if (affected !== 1) throw new Error(`Wager transaction ${tx.id} not found for update`);
+  }
+
+  async findByIdempotencyKey(providerId: string, idempotencyKey: string): Promise<WagerTransaction | null> {
+    const r = await this.em.findOne(WagerTransactionRecord, { providerId, idempotencyKey }, { disableIdentityMap: true });
+    return r ? WagerTransactionMapper.toDomain(r) : null;
+  }
+
+  async hasProcessedReversal(referenceTransactionId: string): Promise<boolean> {
+    const count = await this.em.count(WagerTransactionRecord, {
+      referenceTransactionId,
+      kind: { $in: ['REFUND', 'ROLLBACK'] },
+      status: 'PROCESSED',
+    });
+    return count > 0;
+  }
+
   async findById(id: string): Promise<WagerTransaction | null> {
     const r = await this.em.findOne(WagerTransactionRecord, { id }, { disableIdentityMap: true });
     return r ? WagerTransactionMapper.toDomain(r) : null;

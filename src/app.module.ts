@@ -7,6 +7,7 @@ import { buildOrmConfig } from './shared/infrastructure/mikro-orm.config';
 import { SqsModule } from './shared/infrastructure/sqs/sqs.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { HealthModule } from './modules/health/health.module';
+import { WageringModule } from './modules/wagering/wagering.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { SharedModule } from './shared/shared.module';
 
@@ -27,6 +28,7 @@ import { SharedModule } from './shared/shared.module';
     ObservabilityModule,
     HealthModule,
     WalletModule,
+    WageringModule,
   ],
 })
 export class AppModule {}
