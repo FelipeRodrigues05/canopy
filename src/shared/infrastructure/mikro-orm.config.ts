@@ -1,5 +1,6 @@
 import { defineConfig, type Options } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
+import { entities } from '../../database/entities';
 import { migrations } from '../../database/migrations';
 
 export interface OrmConnectionOptions {
@@ -19,8 +20,7 @@ export interface OrmConnectionOptions {
 export function buildOrmConfig(options: OrmConnectionOptions): Options {
   return defineConfig({
     clientUrl: options.clientUrl,
-    entities: [],
-    discovery: { warnWhenNoEntities: false },
+    entities,
     pool: { min: 0, max: options.poolMax ?? 10 },
     debug: options.debug ?? false,
     allowGlobalContext: false,

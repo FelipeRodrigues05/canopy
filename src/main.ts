@@ -4,11 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.schema';
+import { configureHttpApp } from './http-app';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
+  configureHttpApp(app);
 
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   const roles = config.get('APP_ROLES', { infer: true });

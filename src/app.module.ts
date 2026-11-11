@@ -7,6 +7,8 @@ import { buildOrmConfig } from './shared/infrastructure/mikro-orm.config';
 import { SqsModule } from './shared/infrastructure/sqs/sqs.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { HealthModule } from './modules/health/health.module';
+import { WalletModule } from './modules/wallet/wallet.module';
+import { SharedModule } from './shared/shared.module';
 
 @Module({
   imports: [
@@ -20,9 +22,11 @@ import { HealthModule } from './modules/health/health.module';
           poolMax: config.get('DATABASE_POOL_MAX', { infer: true }),
         }),
     }),
+    SharedModule,
     SqsModule,
     ObservabilityModule,
     HealthModule,
+    WalletModule,
   ],
 })
 export class AppModule {}

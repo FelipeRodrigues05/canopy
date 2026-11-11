@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingMessage } from 'node:http';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import type { Env } from '../../config/env.schema';
-
-export const CORRELATION_HEADER = 'x-correlation-id';
+import { Correlation } from '../../shared/infrastructure/correlation';
 
 /**
  * Financial values must never land in the logs in full (RNF06). Anything that
@@ -33,13 +32,12 @@ const REDACTED_PATHS = [
           level: config.get('LOG_LEVEL', { infer: true }),
           base: { service: 'canopy', pid: process.pid },
           redact: { paths: REDACTED_PATHS, censor: '[REDACTED]' },
-          genReqId: (req: IncomingMessage, res: ServerResponse) => {
-            const incoming = req.headers[CORRELATION_HEADER];
-            const id = typeof incoming === 'string' && incoming.length > 0 ? incoming : randomUUID();
-            res.setHeader(CORRELATION_HEADER, id);
-            return id;
-          },
-          customAttributeKeys: { reqId: 'correlationId' },
+          // The correlation middleware runs first and sets req.id from X-Correlation-Id.
+          genReqId: (req: IncomingMessage & { id?: unknown }) => (typeof req.id === 'string' ? req.id : randomUUID()),
+          quietReqLogger: true,
+          // Adds correlationId (and transactionId, walletId, messageId... once
+          // assigned) to every line, HTTP or not.
+          mixin: () => ({ ...Correlation.current() }),
           autoLogging: {
             ignore: (req: IncomingMessage) => req.url?.startsWith('/health') === true || req.url === '/metrics',
           },
