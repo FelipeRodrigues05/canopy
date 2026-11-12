@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Clock } from '../../../shared/application/clock';
+import { AppMetrics } from '../../../shared/application/metrics';
 import { UnitOfWork } from '../../../shared/application/unit-of-work';
 import { WalletRepository } from '../../wallet/application/ports/wallet.repository';
 import { WagerTransactionRepository } from './ports/wager-transaction.repository';
@@ -37,6 +38,7 @@ export class ResolvePendingReferencesUseCase {
     private readonly wallets: WalletRepository,
     private readonly processor: WagerProcessor,
     private readonly clock: Clock,
+    private readonly metrics: AppMetrics,
   ) {}
 
   async resolveDue(limit = PENDING_BATCH_SIZE): Promise<ResolveReport> {
@@ -53,9 +55,15 @@ export class ResolvePendingReferencesUseCase {
         if (!wallet || !tx) return 'skipped';
 
         await this.processor.process(tx, wallet, { correlationId: `pending-reference:${tx.id}`, causationId: tx.id }, 'update');
-        return tx.status === 'PROCESSED' ? 'processed' : tx.status === 'REJECTED' ? 'rejected' : 'rescheduled';
+        return { kind: tx.kind, status: tx.status };
       });
-      report[status]++;
+      const result =
+        typeof status === 'string' ? status : status.status === 'PROCESSED' ? 'processed' : status.status === 'REJECTED' ? 'rejected' : 'rescheduled';
+      report[result]++;
+      this.metrics.pendingReferenceResolved(result);
+      if (typeof status !== 'string' && result !== 'rescheduled') {
+        this.metrics.transactionDecided({ kind: status.kind, status: status.status, source: 'pending_worker' });
+      }
     }
 
     if (report.processed + report.rejected > 0) {

@@ -6,6 +6,7 @@ import { WagerTransactionRequestedConsumer } from '../../src/modules/wagering/pr
 import { createTestApp } from '../support/app';
 import { assertLedgerInvariant, openAdminSql, resetDatabase } from '../support/db';
 import { brl } from '../support/fixtures';
+import { metricValue } from '../support/metrics';
 import { eventually, spawnInstance } from '../support/spawn';
 import { ChangeMessageVisibilityCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
 import {
@@ -184,16 +185,9 @@ describe('SQS consumer (real Postgres + LocalStack)', () => {
     expect(await balanceOf(w.walletId)).toBe('90.00');
 
     // The message comes back after the visibility timeout (5 s in tests).
-    let duplicates = 0;
-    WagerTransactionRequestedConsumer.hook = (e) => {
-      if (e === 'duplicate') duplicates++;
-    };
-    try {
-      await eventually(async () => (await consumer.pollOnce()) === 1, 20_000, 500);
-    } finally {
-      WagerTransactionRequestedConsumer.hook = undefined;
-    }
-    expect(duplicates).toBe(1);
+    const before = await metricValue(app, 'idempotent_duplicates_total', { source: 'sqs_inbox' });
+    await eventually(async () => (await consumer.pollOnce()) === 1, 20_000, 500);
+    expect(await metricValue(app, 'idempotent_duplicates_total', { source: 'sqs_inbox' })).toBe(before + 1);
     expect(await balanceOf(w.walletId)).toBe('90.00');
     expect(await sql`select 1 from wallet_ledger_entries where direction = 'DEBIT'`).toHaveLength(1);
     expect(await drainQueue(sqs, WAGER_QUEUE, 1)).toHaveLength(0);

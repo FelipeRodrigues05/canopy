@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import type { Env } from '../../config/env.schema';
+import { Registry } from 'prom-client';
+import { AppMetrics } from '../../shared/application/metrics';
 import { Correlation } from '../../shared/infrastructure/correlation';
+import { MetricsController } from './metrics.controller';
+import { PrometheusMetrics } from './prometheus.metrics';
 
 /**
  * Financial values must never land in the logs in full (RNF06). Anything that
@@ -23,7 +27,15 @@ const REDACTED_PATHS = [
   '*.*.balance',
 ];
 
+@Global()
 @Module({
+  controllers: [MetricsController],
+  providers: [
+    PrometheusMetrics,
+    { provide: AppMetrics, useExisting: PrometheusMetrics },
+    { provide: Registry, useFactory: (m: PrometheusMetrics) => m.registry, inject: [PrometheusMetrics] },
+  ],
+  exports: [AppMetrics, Registry],
   imports: [
     LoggerModule.forRootAsync({
       inject: [ConfigService],

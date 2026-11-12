@@ -9,6 +9,7 @@ import {
   SQSClient,
 } from '@aws-sdk/client-sqs';
 import type { Env } from '../../../config/env.schema';
+import { AppMetrics } from '../../../shared/application/metrics';
 import { canonicalHash } from '../../../shared/infrastructure/canonical-hash';
 import { Correlation } from '../../../shared/infrastructure/correlation';
 import { SqsQueues } from '../../../shared/infrastructure/sqs/sqs-queues';
@@ -16,8 +17,6 @@ import { PollingWorker } from '../../../shared/infrastructure/workers/polling-wo
 import { SubmitWagerTransactionUseCase } from '../application/submit-wager-transaction.use-case';
 import { classifyFailure, retryDelaySeconds } from './sqs-error-classifier';
 import { type WagerTransactionRequested, wagerTransactionRequestedSchema } from './wagering.schemas';
-
-export type ConsumerEvent = 'acked' | 'duplicate' | 'retry' | 'dlq';
 
 /**
  * Consumes wager-transactions.fifo with the same use case as HTTP (README 10).
@@ -34,9 +33,6 @@ export type ConsumerEvent = 'acked' | 'duplicate' | 'retry' | 'dlq';
 @Injectable()
 export class WagerTransactionRequestedConsumer extends PollingWorker {
   static readonly consumerName = 'wager-transactions-consumer';
-  /** Observability hook (metrics). */
-  static hook: ((event: ConsumerEvent) => void) | undefined;
-
   private abort = new AbortController();
   private readonly waitTimeSeconds: number;
   private readonly visibilityTimeoutSeconds: number;
@@ -46,6 +42,7 @@ export class WagerTransactionRequestedConsumer extends PollingWorker {
     private readonly sqs: SQSClient,
     private readonly queues: SqsQueues,
     private readonly submitWager: SubmitWagerTransactionUseCase,
+    private readonly metrics: AppMetrics,
     config: ConfigService<Env, true>,
   ) {
     super({
@@ -138,14 +135,12 @@ export class WagerTransactionRequestedConsumer extends PollingWorker {
       if (this.crashAfterCommit) process.exit(137);
 
       await this.ack(queueUrl, message);
-      WagerTransactionRequestedConsumer.hook?.(result.idempotentReplay ? 'duplicate' : 'acked');
       this.logger.log({ msg: 'message processed', status: result.outcome.status, replay: result.idempotentReplay });
     } catch (error: unknown) {
       const disposition = classifyFailure(error);
       const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       if (disposition === 'business') {
         await this.ack(queueUrl, message);
-        WagerTransactionRequestedConsumer.hook?.('acked');
         this.logger.log({ msg: 'message rejected by business rule', reason });
       } else if (disposition === 'permanent') {
         await this.toDeadLetter(queueUrl, message, 'PERMANENT_FAILURE', reason);
@@ -155,7 +150,7 @@ export class WagerTransactionRequestedConsumer extends PollingWorker {
         await this.sqs.send(
           new ChangeMessageVisibilityCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle, VisibilityTimeout: delay }),
         );
-        WagerTransactionRequestedConsumer.hook?.('retry');
+        this.metrics.processingRetry('sqs_transient');
         this.logger.warn({ msg: 'transient failure, message will be retried', receiveCount, delaySeconds: delay, reason });
       }
     }
@@ -187,7 +182,7 @@ export class WagerTransactionRequestedConsumer extends PollingWorker {
       }),
     );
     await this.ack(queueUrl, message);
-    WagerTransactionRequestedConsumer.hook?.('dlq');
+    this.metrics.deadLettered(reason);
     this.logger.warn({ msg: 'message sent to DLQ', reason, detail: detail.slice(0, 200) });
   }
 }

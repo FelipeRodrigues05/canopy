@@ -1,9 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IsolationLevel, MikroORM } from '@mikro-orm/postgresql';
+import { AppMetrics, type LockConflictType } from '../../application/metrics';
 import { UnitOfWork } from '../../application/unit-of-work';
-import { isRetryableTransactionError } from './pg-errors';
+import { SQLSTATE, isRetryableTransactionError, sqlState } from './pg-errors';
 
 const MAX_ATTEMPTS = 3;
+
+const LOCK_CONFLICTS: Record<string, LockConflictType> = {
+  [SQLSTATE.deadlockDetected]: 'deadlock',
+  [SQLSTATE.serializationFailure]: 'serialization',
+  [SQLSTATE.lockNotAvailable]: 'lock_timeout',
+};
 
 /**
  * READ COMMITTED + explicit row locks (SELECT ... FOR UPDATE on the wallet) is
@@ -15,9 +22,10 @@ const MAX_ATTEMPTS = 3;
 @Injectable()
 export class MikroOrmUnitOfWork extends UnitOfWork {
   private readonly logger = new Logger(MikroOrmUnitOfWork.name);
-  static onRetry: ((reason: string) => void) | undefined;
-
-  constructor(private readonly orm: MikroORM) {
+  constructor(
+    private readonly orm: MikroORM,
+    private readonly metrics: AppMetrics,
+  ) {
     super();
   }
 
@@ -32,9 +40,11 @@ export class MikroOrmUnitOfWork extends UnitOfWork {
           { isolationLevel: IsolationLevel.READ_COMMITTED },
         );
       } catch (error: unknown) {
+        const conflict = LOCK_CONFLICTS[sqlState(error) ?? ''];
+        if (conflict) this.metrics.lockConflict(conflict);
         if (attempt >= MAX_ATTEMPTS || !isRetryableTransactionError(error)) throw error;
-        const reason = (error as { code?: string }).code ?? 'unknown';
-        MikroOrmUnitOfWork.onRetry?.(reason);
+        const reason = conflict ?? 'unknown';
+        this.metrics.processingRetry(`db_${reason}`);
         this.logger.warn({ msg: 'transaction retry', attempt, reason });
         await Bun.sleep(10 * 2 ** attempt + Math.random() * 20);
       }

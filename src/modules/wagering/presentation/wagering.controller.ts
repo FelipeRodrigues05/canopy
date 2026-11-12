@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { InvalidPayloadError } from '../../../shared/application/application-error';
+import { Correlation } from '../../../shared/infrastructure/correlation';
 import { CorrelationId } from '../../../shared/presentation/correlation-id.decorator';
 import { GetTransactionUseCase } from '../application/get-transaction.use-case';
 import { SubmitWagerTransactionUseCase } from '../application/submit-wager-transaction.use-case';
@@ -37,7 +38,10 @@ export class WageringController {
     if (!key.success) {
       throw new InvalidPayloadError('Idempotency-Key header is required (1-300 printable characters)');
     }
+    // Every later log line of this request carries these ids (README 12).
+    Correlation.assign({ providerId: body.providerId, walletId: body.walletId });
     const result = await this.submitWager.execute({ ...body, idempotencyKey: key.data, correlationId }, { type: 'HTTP' });
+    Correlation.assign({ transactionId: result.transactionId });
     const { status, body: response } = toSubmitResponse(result);
     res.status(status);
     return response;
