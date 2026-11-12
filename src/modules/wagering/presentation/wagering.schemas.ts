@@ -21,3 +21,12 @@ export const submitWagerSchema = z
 export type SubmitWagerBody = z.infer<typeof submitWagerSchema>;
 
 export const idempotencyKeySchema = id(300);
+
+/** SQS message (README 10). The envelope messageId is the inbox deduplication key. */
+export const wagerTransactionRequestedSchema = z.object({
+  messageId: id(200),
+  type: z.literal('WagerTransactionRequested'),
+  occurredAt: z.iso.datetime(),
+  data: submitWagerSchema.extend({ idempotencyKey: idempotencyKeySchema }),
+});
+export type WagerTransactionRequested = z.infer<typeof wagerTransactionRequestedSchema>;

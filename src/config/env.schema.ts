@@ -27,6 +27,10 @@ export const envSchema = z.object({
   SQS_WAGER_DLQ: z.string().default('wager-transactions-dlq.fifo'),
   SQS_EVENTS_QUEUE: z.string().default('wallet-events.fifo'),
 
+  SQS_WAIT_TIME_SECONDS: z.coerce.number().int().min(0).max(20).default(20),
+  SQS_VISIBILITY_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(30),
+  SQS_CONSUMER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(500),
 
   PENDING_REFERENCE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),

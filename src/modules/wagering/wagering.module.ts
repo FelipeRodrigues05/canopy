@@ -8,6 +8,7 @@ import { WagerProcessor } from './application/wager-processor';
 import { WageringConfig } from './application/wagering.config';
 import { WageringPersistenceModule } from './wagering-persistence.module';
 import { WageringController } from './presentation/wagering.controller';
+import { WagerTransactionRequestedConsumer } from './presentation/wager-transaction-requested.consumer';
 
 @Module({
   imports: [WalletModule, WageringPersistenceModule, MessagingPersistenceModule],
@@ -24,7 +25,8 @@ import { WageringController } from './presentation/wagering.controller';
     },
     WagerProcessor,
     SubmitWagerTransactionUseCase,
+    WagerTransactionRequestedConsumer,
   ],
-  exports: [SubmitWagerTransactionUseCase, WagerProcessor, WageringConfig],
+  exports: [SubmitWagerTransactionUseCase, WagerTransactionRequestedConsumer, WagerProcessor, WageringConfig],
 })
 export class WageringModule {}
