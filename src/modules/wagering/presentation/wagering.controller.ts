@@ -1,14 +1,25 @@
-import { Body, Controller, Headers, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { InvalidPayloadError } from '../../../shared/application/application-error';
 import { CorrelationId } from '../../../shared/presentation/correlation-id.decorator';
+import { GetTransactionUseCase } from '../application/get-transaction.use-case';
 import { SubmitWagerTransactionUseCase } from '../application/submit-wager-transaction.use-case';
+import type { TransactionView } from '../application/transaction.view';
+import { uuidSchema } from '../../../shared/presentation/schemas';
 import { type SubmitWagerResponse, toSubmitResponse } from './wager-transaction.response';
 import { type SubmitWagerBody, idempotencyKeySchema, submitWagerSchema } from './wagering.schemas';
 
 @Controller('wagering/transactions')
 export class WageringController {
-  constructor(private readonly submitWager: SubmitWagerTransactionUseCase) {}
+  constructor(
+    private readonly submitWager: SubmitWagerTransactionUseCase,
+    private readonly getTransaction: GetTransactionUseCase,
+  ) {}
+
+  @Get(':transactionId')
+  get(@Param('transactionId', { schema: uuidSchema }) transactionId: string): Promise<TransactionView> {
+    return this.getTransaction.byId(transactionId);
+  }
 
   /**
    * 200 processed | 202 waiting for its reference | 422 rejected by a business

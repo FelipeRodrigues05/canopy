@@ -48,6 +48,15 @@ export class MikroOrmWalletRepository extends WalletRepository {
     return record ? WalletMapper.toDomain(record) : null;
   }
 
+  async findByIdForShare(id: string): Promise<Wallet | null> {
+    const record = await this.em.findOne(
+      WalletRecord,
+      { id },
+      { lockMode: LockMode.PESSIMISTIC_READ, disableIdentityMap: true },
+    );
+    return record ? WalletMapper.toDomain(record) : null;
+  }
+
   async saveBalance(wallet: Wallet, expectedVersion: number): Promise<void> {
     const affected = await this.em.nativeUpdate(
       WalletRecord,

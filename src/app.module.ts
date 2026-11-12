@@ -8,6 +8,7 @@ import { SqsModule } from './shared/infrastructure/sqs/sqs.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { HealthModule } from './modules/health/health.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { WageringModule } from './modules/wagering/wagering.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { SharedModule } from './shared/shared.module';
@@ -31,6 +32,7 @@ import { SharedModule } from './shared/shared.module';
     WalletModule,
     WageringModule,
     MessagingModule,
+    ReconciliationModule,
   ],
 })
 export class AppModule {}
