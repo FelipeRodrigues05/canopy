@@ -92,14 +92,17 @@ export class SubmitWagerTransactionUseCase {
 
   private async submit(draft: WagerTransaction, command: SubmitWagerCommand, source: SubmissionSource): Promise<SubmitWagerResult> {
     if (source.type === 'SQS') {
-      const fresh = await this.inbox.register(
-        InboxMessage.receive({
-          consumerName: source.consumerName,
-          messageId: source.messageId,
-          payloadHash: source.messageHash,
-          now: this.clock.now(),
-        }),
-      );
+      const now = this.clock.now();
+      const message = InboxMessage.receive({
+        consumerName: source.consumerName,
+        messageId: source.messageId,
+        payloadHash: source.messageHash,
+        now,
+      });
+      // Written in the same transaction as the effects: if this row commits,
+      // the message is fully processed.
+      message.markProcessed(now);
+      const fresh = await this.inbox.register(message);
       if (!fresh) {
         const result = await this.replayOrConflict(draft);
         SubmitWagerTransactionUseCase.hook?.('inbox-duplicate', result);

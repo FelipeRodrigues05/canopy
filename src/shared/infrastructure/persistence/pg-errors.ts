@@ -49,7 +49,7 @@ export function isRetryableTransactionError(error: unknown): boolean {
 /** The database is unreachable or refused us for a while: answer 503 / retry the message. */
 export function isTransientDatabaseError(error: unknown): boolean {
   const state = sqlState(error);
-  if (state && (state.startsWith('08') || state === SQLSTATE.lockNotAvailable || state === SQLSTATE.queryCanceled
+  if (state && (state.startsWith('08') || state.startsWith('53') || state === SQLSTATE.lockNotAvailable || state === SQLSTATE.queryCanceled
     || state === SQLSTATE.adminShutdown || state === SQLSTATE.cannotConnectNow || isRetryableTransactionError(error))) {
     return true;
   }

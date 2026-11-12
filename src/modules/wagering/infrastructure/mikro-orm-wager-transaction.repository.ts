@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/postgresql';
+import { EntityManager, LockMode, type QueryResult } from '@mikro-orm/postgresql';
 import { WagerTransactionRepository } from '../application/ports/wager-transaction.repository';
 import type { WagerTransaction } from '../domain/wager-transaction';
 import { WagerTransactionMapper } from './wager-transaction.mapper';
@@ -46,6 +46,37 @@ export class MikroOrmWagerTransactionRepository extends WagerTransactionReposito
   async findByIdempotencyKey(providerId: string, idempotencyKey: string): Promise<WagerTransaction | null> {
     const r = await this.em.findOne(WagerTransactionRecord, { providerId, idempotencyKey }, { disableIdentityMap: true });
     return r ? WagerTransactionMapper.toDomain(r) : null;
+  }
+
+  async findDuePendingIds(limit: number, now: Date): Promise<string[]> {
+    const rows = await this.em.find(
+      WagerTransactionRecord,
+      { status: 'PENDING_REFERENCE', nextRetryAt: { $lte: now } },
+      { fields: ['id'], orderBy: { nextRetryAt: 'asc' }, limit, disableIdentityMap: true },
+    );
+    return rows.map((r) => r.id);
+  }
+
+  async lockDuePending(id: string, now: Date): Promise<WagerTransaction | null> {
+    const r = await this.em.findOne(
+      WagerTransactionRecord,
+      { id, status: 'PENDING_REFERENCE', nextRetryAt: { $lte: now } },
+      { lockMode: LockMode.PESSIMISTIC_PARTIAL_WRITE, disableIdentityMap: true },
+    );
+    return r ? WagerTransactionMapper.toDomain(r) : null;
+  }
+
+  async expediteWaitingFor(providerId: string, externalTransactionId: string, now: Date): Promise<number> {
+    const result = await this.em.execute<QueryResult>(
+      `update wager_transactions set next_retry_at = ?
+        where id in (select id from wager_transactions
+                      where status = 'PENDING_REFERENCE' and provider_id = ? and reference_external_transaction_id = ?
+                        and next_retry_at > ?
+                      for update skip locked)`,
+      [now, providerId, externalTransactionId, now],
+      'run',
+    );
+    return result.affectedRows;
   }
 
   async hasProcessedReversal(referenceTransactionId: string): Promise<boolean> {

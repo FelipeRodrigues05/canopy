@@ -10,6 +10,8 @@ export interface PollingWorkerOptions {
   idleDelayMs: number;
   /** Wait after a cycle threw (database down, broker down...). */
   errorDelayMs: number;
+  /** Longest stop() waits for the running cycle; undefined = until it ends. */
+  shutdownTimeoutMs?: number;
 }
 
 /**
@@ -31,6 +33,13 @@ export abstract class PollingWorker implements OnApplicationBootstrap, BeforeApp
   /** One cycle. Returns how many items it handled (0 = idle). */
   protected abstract runOnce(): Promise<number>;
 
+  /** Called once when stop() starts, e.g. to abort a long poll. */
+  protected onStopRequested(): void {}
+
+  protected get isStopping(): boolean {
+    return this.stopping;
+  }
+
   onApplicationBootstrap(): void {
     if (this.options.enabled) this.start();
   }
@@ -47,9 +56,17 @@ export abstract class PollingWorker implements OnApplicationBootstrap, BeforeApp
   }
 
   async stop(): Promise<void> {
+    if (!this.running) return;
     this.stopping = true;
+    this.onStopRequested();
     this.wake?.();
-    await this.running;
+    const timeout = this.options.shutdownTimeoutMs;
+    if (timeout === undefined) {
+      await this.running;
+    } else {
+      const finished = await Promise.race([this.running.then(() => true), Bun.sleep(timeout).then(() => false)]);
+      if (!finished) this.logger.warn({ msg: 'worker did not finish in time, leaving in-flight work to the broker', timeout });
+    }
     this.running = null;
   }
 

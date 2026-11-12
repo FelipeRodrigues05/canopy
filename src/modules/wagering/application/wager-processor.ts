@@ -118,6 +118,10 @@ export class WagerProcessor {
       await this.ledger.append(entry);
     }
     await this.outbox.add(events.map((e) => OutboxMessage.enqueue(e)));
+    if (tx.isTerminal) {
+      // Anything parked waiting for this transaction can be decided now.
+      await this.transactions.expediteWaitingFor(tx.providerId, tx.externalTransactionId, now);
+    }
     return decision;
   }
 
