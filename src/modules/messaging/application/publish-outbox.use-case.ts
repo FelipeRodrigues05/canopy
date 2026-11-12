@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Clock } from '../../../shared/application/clock';
+import { AppMetrics } from '../../../shared/application/metrics';
 import { UnitOfWork } from '../../../shared/application/unit-of-work';
 import { EventPublisher } from './ports/event-publisher';
 import { OutboxRepository } from './ports/outbox.repository';
@@ -27,14 +28,13 @@ export const OUTBOX_BATCH_SIZE = 100;
 @Injectable()
 export class PublishOutboxUseCase {
   private readonly logger = new Logger(PublishOutboxUseCase.name);
-  /** Observability hook (metrics). */
-  static hook: ((result: PublishOutboxResult) => void) | undefined;
 
   constructor(
     private readonly uow: UnitOfWork,
     private readonly outbox: OutboxRepository,
     private readonly publisher: EventPublisher,
     private readonly clock: Clock,
+    private readonly metrics: AppMetrics,
   ) {}
 
   async publishPending(batchSize = OUTBOX_BATCH_SIZE): Promise<PublishOutboxResult> {
@@ -58,7 +58,7 @@ export class PublishOutboxUseCase {
       }
       return { claimed: due.length, published: report.published, failed: report.failed.length };
     });
-    PublishOutboxUseCase.hook?.(result);
+    this.metrics.outboxPublished(result.published.length, result.failed);
     return result;
   }
 }

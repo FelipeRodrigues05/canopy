@@ -1,5 +1,14 @@
 import type { Subprocess } from 'bun';
 
+const children = new Set<Subprocess>();
+// If the test runner dies or is interrupted, do not leave services running:
+// orphans would keep consuming the shared queues and database.
+for (const event of ['exit', 'SIGINT', 'SIGTERM'] as const) {
+  process.on(event, () => {
+    for (const child of children) child.kill('SIGKILL');
+  });
+}
+
 export interface Instance {
   proc: Subprocess;
   port: number;
@@ -18,13 +27,15 @@ export async function spawnInstance(options: {
   env?: Record<string, string>;
   waitReady?: boolean;
 }): Promise<Instance> {
-  const port = options.port ?? 40000 + Math.floor(Math.random() * 10000);
+  const port = options.port ?? freePort();
   const proc = Bun.spawn(['bun', 'src/main.ts'], {
     cwd: `${__dirname}/../..`,
     env: { ...process.env, NODE_ENV: 'test', LOG_LEVEL: process.env.INSTANCE_LOG_LEVEL ?? 'silent', APP_ROLES: options.roles, PORT: String(port), ...options.env },
     stdout: 'inherit',
     stderr: 'inherit',
   });
+  children.add(proc);
+  void proc.exited.then(() => children.delete(proc));
   const instance: Instance = {
     proc,
     port,
@@ -32,11 +43,25 @@ export async function spawnInstance(options: {
     exited: proc.exited,
     async stop(signal: NodeJS.Signals = 'SIGTERM') {
       proc.kill(signal);
-      return proc.exited;
+      // A process that does not leave on SIGTERM must not outlive the test.
+      const timer = setTimeout(() => proc.kill('SIGKILL'), 10_000);
+      try {
+        return await proc.exited;
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
   if (options.waitReady ?? options.roles.includes('api')) await waitReady(instance);
   return instance;
+}
+
+/** Asks the OS for a free port (bind to 0, read it, release it). */
+function freePort(): number {
+  const server = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
+  const { port } = server;
+  server.stop(true);
+  return port;
 }
 
 async function waitReady(instance: Instance, timeoutMs = 30_000): Promise<void> {

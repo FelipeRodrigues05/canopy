@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Clock } from '../../../shared/application/clock';
 import { IdGenerator } from '../../../shared/application/id-generator';
+import { AppMetrics, type SubmissionOutcome } from '../../../shared/application/metrics';
+import { ApplicationError } from '../../../shared/application/application-error';
 import { InvalidPayloadError } from '../../../shared/application/application-error';
 import { UnitOfWork } from '../../../shared/application/unit-of-work';
 import { InvalidValueError } from '../../../shared/domain/domain-error';
@@ -40,8 +42,6 @@ export interface SubmitWagerResult {
   idempotentReplay: boolean;
 }
 
-export type SubmissionHook = (event: 'committed' | 'replay' | 'inbox-duplicate', result: SubmitWagerResult) => void;
-
 const MAX_RACE_RETRIES = 3;
 
 /**
@@ -60,8 +60,6 @@ const MAX_RACE_RETRIES = 3;
 @Injectable()
 export class SubmitWagerTransactionUseCase {
   private readonly logger = new Logger(SubmitWagerTransactionUseCase.name);
-  /** Observability hook (metrics); never part of the business flow. */
-  static hook: SubmissionHook | undefined;
 
   constructor(
     private readonly uow: UnitOfWork,
@@ -72,25 +70,58 @@ export class SubmitWagerTransactionUseCase {
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
   ) {}
+    private readonly metrics: AppMetrics,
 
   async execute(command: SubmitWagerCommand, source: SubmissionSource = { type: 'HTTP' }): Promise<SubmitWagerResult> {
-    const draft = this.draft(command);
+    const started = performance.now();
+    const sourceLabel = source.type === 'HTTP' ? 'http' : 'sqs';
+    let outcome: SubmissionOutcome = 'ERROR';
+    try {
+      const draft = this.draft(command);
+      const result = await this.submitWithRaceRetry(draft, command, source);
+      outcome = result.idempotentReplay ? 'REPLAY' : result.outcome.status;
+      if (!result.idempotentReplay) {
+        this.metrics.transactionDecided({ kind: draft.kind, status: result.outcome.status, source: sourceLabel });
+      } else if (source.type === 'HTTP') {
+        this.metrics.duplicateDetected('http');
+      } else if (!result.viaInbox) {
+        this.metrics.duplicateDetected('sqs_idempotency_key');
+      }
+      if (result.viaInbox) this.metrics.duplicateDetected('sqs_inbox');
+      return { transactionId: result.transactionId, outcome: result.outcome, idempotentReplay: result.idempotentReplay };
+    } catch (error: unknown) {
+      outcome = outcomeOf(error);
+      throw error;
+    } finally {
+      this.metrics.submissionCompleted({ source: sourceLabel, kind: command.kind, outcome }, (performance.now() - started) / 1000);
+    }
+  }
 
+  private async submitWithRaceRetry(
+    draft: WagerTransaction,
+    command: SubmitWagerCommand,
+    source: SubmissionSource,
+  ): Promise<SubmitWagerResult & { viaInbox?: boolean }> {
     for (let attempt = 1; ; attempt++) {
       try {
-        const result = await this.uow.run(() => this.submit(draft, command, source));
-        SubmitWagerTransactionUseCase.hook?.(result.idempotentReplay ? 'replay' : 'committed', result);
-        return result;
+        return await this.uow.run(() => this.submit(draft, command, source));
       } catch (error: unknown) {
         // Lost an insert race to a concurrent duplicate: run again, the
         // existing row now decides between replay and conflict.
-        if (error instanceof ConcurrentSubmissionError && attempt < MAX_RACE_RETRIES) continue;
+        if (error instanceof ConcurrentSubmissionError) {
+          this.metrics.lockConflict('insert_race');
+          if (attempt < MAX_RACE_RETRIES) continue;
+        }
         throw error;
       }
     }
   }
 
-  private async submit(draft: WagerTransaction, command: SubmitWagerCommand, source: SubmissionSource): Promise<SubmitWagerResult> {
+  private async submit(
+    draft: WagerTransaction,
+    command: SubmitWagerCommand,
+    source: SubmissionSource,
+  ): Promise<SubmitWagerResult & { viaInbox?: boolean }> {
     if (source.type === 'SQS') {
       const now = this.clock.now();
       const message = InboxMessage.receive({
@@ -103,11 +134,7 @@ export class SubmitWagerTransactionUseCase {
       // the message is fully processed.
       message.markProcessed(now);
       const fresh = await this.inbox.register(message);
-      if (!fresh) {
-        const result = await this.replayOrConflict(draft);
-        SubmitWagerTransactionUseCase.hook?.('inbox-duplicate', result);
-        return result;
-      }
+      if (!fresh) return { ...(await this.replayOrConflict(draft)), viaInbox: true };
     }
 
     const existing = await this.transactions.findByIdempotencyKey(draft.providerId, draft.idempotencyKey);
@@ -200,4 +227,13 @@ export class SubmitWagerTransactionUseCase {
       throw error;
     }
   }
+}
+
+function outcomeOf(error: unknown): SubmissionOutcome {
+  if (error instanceof ApplicationError) {
+    if (error.category === 'VALIDATION') return 'INVALID';
+    if (error.category === 'CONFLICT') return 'CONFLICT';
+    if (error.category === 'BUSINESS' || error.category === 'NOT_FOUND') return 'BUSINESS_ERROR';
+  }
+  return 'ERROR';
 }

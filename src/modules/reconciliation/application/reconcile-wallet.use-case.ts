@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Clock } from '../../../shared/application/clock';
+import { AppMetrics } from '../../../shared/application/metrics';
 import { UnitOfWork } from '../../../shared/application/unit-of-work';
 import { Money, type MoneyProps } from '../../../shared/domain/money';
 import { LedgerRepository } from '../../wallet/application/ports/ledger.repository';
@@ -35,14 +36,13 @@ export interface ReconciliationReport {
 @Injectable()
 export class ReconcileWalletUseCase {
   private readonly logger = new Logger(ReconcileWalletUseCase.name);
-  /** Observability hook (metrics). */
-  static hook: ((report: ReconciliationReport) => void) | undefined;
 
   constructor(
     private readonly uow: UnitOfWork,
     private readonly wallets: WalletRepository,
     private readonly ledger: LedgerRepository,
     private readonly clock: Clock,
+    private readonly metrics: AppMetrics,
   ) {}
 
   async execute(walletId: string): Promise<ReconciliationReport> {
@@ -87,7 +87,7 @@ export class ReconcileWalletUseCase {
       // Logged without amounts in clear: the redaction covers balance/amount keys.
       this.logger.warn({ msg: 'reconciliation mismatch', walletId, findings: report.findings, difference: report.difference });
     }
-    ReconcileWalletUseCase.hook?.(report);
+    this.metrics.reconciliationChecked(report.consistent);
     return report;
   }
 }

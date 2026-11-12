@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ReconcileWalletUseCase, type ReconciliationReport } from '../../src/modules/reconciliation/application/reconcile-wallet.use-case';
 import { createTestApp } from '../support/app';
 import { assertLedgerInvariant, openAdminSql, resetDatabase } from '../support/db';
 import { brl } from '../support/fixtures';
+import { metricValue } from '../support/metrics';
 import { createWallet, submit, wager } from '../support/wagering';
 
 describe('queries and reconciliation (real Postgres)', () => {
@@ -129,23 +129,18 @@ describe('queries and reconciliation (real Postgres)', () => {
         await tx`alter table wallets enable trigger trg_wallet_backed_by_ledger`;
       });
 
-      const reports: ReconciliationReport[] = [];
-      ReconcileWalletUseCase.hook = (r) => reports.push(r);
-      try {
-        const res = await http().post(`/wallets/${w.walletId}/reconciliation`);
-        expect(res.status).toBe(200);
-        expect(res.body).toMatchObject({
-          storedBalance: brl('95.00'),
-          calculatedBalance: brl('90.00'),
-          difference: brl('5.00'),
-          consistent: false,
-          checkedEntries: 2,
-        });
-        expect(res.body.findings).toContain('stored balance differs from the ledger sum');
-        expect(reports).toHaveLength(1); // the metrics hook saw it
-      } finally {
-        ReconcileWalletUseCase.hook = undefined;
-      }
+      const mismatchesBefore = await metricValue(app, 'reconciliation_mismatches_total');
+      const res = await http().post(`/wallets/${w.walletId}/reconciliation`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        storedBalance: brl('95.00'),
+        calculatedBalance: brl('90.00'),
+        difference: brl('5.00'),
+        consistent: false,
+        checkedEntries: 2,
+      });
+      expect(res.body.findings).toContain('stored balance differs from the ledger sum');
+      expect(await metricValue(app, 'reconciliation_mismatches_total')).toBe(mismatchesBefore + 1);
 
       const [after] = await sql`select balance::text from wallets where id = ${w.walletId}`;
       expect(after.balance).toBe('95.00'); // untouched
