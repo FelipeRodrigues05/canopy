@@ -27,7 +27,7 @@ describe('concurrency, one instance (real Postgres)', () => {
   it('README 8: balance 100.00, two simultaneous 80.00 bets -> one PROCESSED, one REJECTED, 20.00, one debit', async () => {
     const w = await createWallet(app, '100.00');
     const [a, b] = await Promise.all([submit(app, wager(w, 'BET', '80.00')), submit(app, wager(w, 'BET', '80.00'))]);
-    const statuses = [a.body.status, b.body.status].sort();
+    const statuses = [a.body.status, b.body.status].sort((x: string, y: string) => x.localeCompare(y));
     expect(statuses).toEqual(['PROCESSED', 'REJECTED']);
     expect([a, b].find((r) => r.body.status === 'REJECTED')?.body.failureCode).toBe('INSUFFICIENT_FUNDS');
 
