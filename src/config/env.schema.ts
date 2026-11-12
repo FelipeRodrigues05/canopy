@@ -33,6 +33,7 @@ export const envSchema = z.object({
 
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(500),
 
+  PENDING_REFERENCE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
   PENDING_REFERENCE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
   PENDING_REFERENCE_BASE_DELAY_MS: z.coerce.number().int().positive().default(1000),
   PENDING_REFERENCE_MAX_DELAY_MS: z.coerce.number().int().positive().default(300_000),
