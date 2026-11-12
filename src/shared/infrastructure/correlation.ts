@@ -36,7 +36,7 @@ export const Correlation = {
     if (store) Object.assign(store, fields);
   },
 
-  middleware(req: Request, res: Response, next: NextFunction): void {
+  middleware: (req: Request, res: Response, next: NextFunction): void => {
     const header = req.headers[CORRELATION_HEADER];
     const id = typeof header === 'string' && /^[\w.:-]{1,128}$/.test(header) ? header : randomUUID();
     (req as Request & { id: string }).id = id;

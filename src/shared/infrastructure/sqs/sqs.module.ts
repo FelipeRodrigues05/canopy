@@ -13,6 +13,9 @@ import { SqsQueues } from './sqs-queues';
       useFactory: (config: ConfigService<Env, true>) => {
         const endpoint = config.get('AWS_ENDPOINT_URL', { infer: true });
         return new SQSClient({
+          // Bounded calls: a publisher holds row locks while it sends.
+          requestHandler: { connectionTimeout: 2000, requestTimeout: 5000 },
+          maxAttempts: 2,
           region: config.get('AWS_REGION', { infer: true }),
           ...(endpoint ? { endpoint } : {}),
           credentials: {
