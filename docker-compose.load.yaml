@@ -1,0 +1,15 @@
+# Overlay for `bun run test:load`:
+#   docker compose -f docker-compose.yaml -f docker-compose.load.yaml up -d --scale app=3
+services:
+  app:
+    environment:
+      LOG_LEVEL: warn            # per-request info logs would measure the logger, not the service
+      DATABASE_POOL_MAX: "15"
+
+  lb:
+    image: nginx:1.27-alpine
+    ports: ["8088:80"]
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app: { condition: service_healthy }
