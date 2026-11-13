@@ -1,0 +1,83 @@
+{
+  "env": {
+    "date": "2026-11-13T17:45:30.374Z",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
+    "cores": "12",
+    "memory": "15 GB",
+    "os": "linux 7.2.15-arch1-1",
+    "bun": "1.4.4",
+    "docker": "29.9.3",
+    "pool": "15"
+  },
+  "scenarios": [
+    {
+      "name": "distributed",
+      "description": "many wallets, little contention",
+      "durationS": 30.3,
+      "requests": 4505,
+      "throughput": 148.5,
+      "p50": 401.9,
+      "p95": 876.3,
+      "p99": 1404.7,
+      "max": 1764.4,
+      "statuses": {
+        "200": 4505
+      },
+      "errorRate": 0,
+      "businessRejections": 0,
+      "metricsDelta": {
+        "wager_transactions_total": 4288,
+        "lock_conflicts_total": 0,
+        "processing_retries_total": 0,
+        "idempotent_duplicates_total": 217,
+        "outbox_published_total": 8582,
+        "dlq_messages_total": 0
+      },
+      "outboxLagMaxS": 1.43,
+      "outboxLagAfterS": 0
+    },
+    {
+      "name": "hot-wallet",
+      "description": "3 wallet(s), maximum contention",
+      "durationS": 30.8,
+      "requests": 2831,
+      "throughput": 91.9,
+      "p50": 415.6,
+      "p95": 2149.6,
+      "p99": 3062.7,
+      "max": 3964.6,
+      "statuses": {
+        "200": 2831
+      },
+      "errorRate": 0,
+      "businessRejections": 0,
+      "metricsDelta": {
+        "wager_transactions_total": 2703,
+        "lock_conflicts_total": 0,
+        "processing_retries_total": 0,
+        "idempotent_duplicates_total": 128,
+        "outbox_published_total": 5406,
+        "dlq_messages_total": 0
+      },
+      "outboxLagMaxS": 0.55,
+      "outboxLagAfterS": 0
+    }
+  ],
+  "sqs": {
+    "messages": 3000,
+    "drainS": 40,
+    "throughput": 75,
+    "metricsDelta": {
+      "wager_transactions_total": 3000,
+      "lock_conflicts_total": 0,
+      "processing_retries_total": 0,
+      "idempotent_duplicates_total": 0,
+      "outbox_published_total": 6000,
+      "dlq_messages_total": 0
+    }
+  },
+  "reconciliation": {
+    "checked": 503,
+    "inconsistent": []
+  }
+}

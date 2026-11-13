@@ -1,0 +1,52 @@
+# Real Postgres and LocalStack for the integration and concurrency suites.
+# Isolated from the dev stack: own project name, own ports, data in tmpfs.
+name: canopy-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      CANOPY_DATABASES: canopy_test canopy_concurrency
+    ports: ["55432:5432"]
+    command: ["postgres", "-c", "max_connections=300", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    tmpfs: [/var/lib/postgresql/data]
+    volumes:
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-canopy.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d canopy_concurrency"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  localstack:
+    image: localstack/localstack:4.9
+    environment:
+      SERVICES: sqs
+      SQS_ENDPOINT_STRATEGY: path
+    ports: ["54566:4566"]
+    volumes:
+      - ./infra/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name wallet-events.fifo >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:58080
+      KC_HEALTH_ENABLED: "true"
+    ports: ["58080:8080"]
+    volumes:
+      - ./infra/keycloak/realm-wagering.json:/opt/keycloak/data/import/realm-wagering.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
