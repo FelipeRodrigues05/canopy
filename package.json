@@ -23,7 +23,8 @@
     "migration:down": "bun scripts/migrate.ts down",
     "migration:status": "bun scripts/migrate.ts status",
     "migration:create": "bun scripts/migrate.ts create",
-    "deps:wait": "bun scripts/wait-for-deps.ts"
+    "deps:wait": "bun scripts/wait-for-deps.ts",
+    "test:load": "bun scripts/load/run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1167.0",
