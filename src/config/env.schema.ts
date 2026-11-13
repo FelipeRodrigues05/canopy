@@ -33,6 +33,13 @@ export const envSchema = z.object({
 
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(500),
 
+  AUTH_ENABLED: z.stringbool().default(true),
+  /** Expected `iss` of access tokens, e.g. http://localhost:8080/realms/wagering. */
+  AUTH_ISSUER: z.url().optional(),
+  /** Where to fetch the signing keys; defaults to the issuer's Keycloak certs endpoint. */
+  AUTH_JWKS_URL: z.url().optional(),
+  AUTH_AUDIENCE: z.string().default('canopy-api'),
+
   PENDING_REFERENCE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
   PENDING_REFERENCE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
   PENDING_REFERENCE_BASE_DELAY_MS: z.coerce.number().int().positive().default(1000),
@@ -41,8 +48,13 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+const checkedSchema = envSchema.refine((env) => !env.AUTH_ENABLED || env.AUTH_ISSUER !== undefined, {
+  path: ['AUTH_ISSUER'],
+  message: 'AUTH_ISSUER is required when AUTH_ENABLED is true',
+});
+
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(raw);
+  const parsed = checkedSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid environment:\n${z.prettifyError(parsed.error)}`);
   }

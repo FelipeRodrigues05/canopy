@@ -9,6 +9,11 @@ x-app-env: &app-env
   AWS_ENDPOINT_URL: http://localstack:4566
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
+  AUTH_ENABLED: "true"
+  # Tokens carry the issuer the client used (localhost from the host); keys are fetched inside the network.
+  AUTH_ISSUER: http://localhost:8080/realms/wagering
+  AUTH_JWKS_URL: http://keycloak:8080/realms/wagering/protocol/openid-connect/certs
+  AUTH_AUDIENCE: canopy-api
 
 services:
   postgres:
@@ -42,6 +47,26 @@ services:
       timeout: 5s
       retries: 40
 
+  # Identity provider. Realm "wagering" with one client per provider (client
+  # credentials) and a provider_id claim; dev mode, imported on start.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports: ["8080:8080"]
+    volumes:
+      - ./infra/keycloak/realm-wagering.json:/opt/keycloak/data/import/realm-wagering.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
   migrate:
     build: .
     command: ["bun", "scripts/migrate.ts", "up"]
@@ -61,6 +86,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       localstack: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s

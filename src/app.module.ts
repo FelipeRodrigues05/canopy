@@ -12,6 +12,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 import { WageringModule } from './modules/wagering/wagering.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { SharedModule } from './shared/shared.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SharedModule } from './shared/shared.module';
     SharedModule,
     SqsModule,
     ObservabilityModule,
+    AuthModule,
     HealthModule,
     WalletModule,
     WageringModule,

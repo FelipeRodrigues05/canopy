@@ -1,6 +1,9 @@
 import { Controller, Get, Header } from '@nestjs/common';
 import { Registry } from 'prom-client';
+import { Public } from '../auth/presentation/public.decorator';
 
+/** Scraped by Prometheus inside the network; protect at the network layer in production. */
+@Public()
 @Controller('metrics')
 export class MetricsController {
   constructor(private readonly registry: Registry) {}
