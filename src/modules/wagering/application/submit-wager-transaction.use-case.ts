@@ -69,8 +69,8 @@ export class SubmitWagerTransactionUseCase {
     private readonly processor: WagerProcessor,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
-  ) {}
     private readonly metrics: AppMetrics,
+  ) {}
 
   async execute(command: SubmitWagerCommand, source: SubmissionSource = { type: 'HTTP' }): Promise<SubmitWagerResult> {
     const started = performance.now();
