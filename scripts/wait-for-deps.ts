@@ -51,6 +51,14 @@ async function main(): Promise<void> {
     await until(`sqs ${queue}`, () => sqs.send(new GetQueueUrlCommand({ QueueName: queue })));
   }
   sqs.destroy();
+
+  const issuer = process.env.AUTH_TEST_ISSUER ?? (process.env.AUTH_ENABLED === 'true' ? process.env.AUTH_ISSUER : undefined);
+  if (issuer) {
+    await until('keycloak', async () => {
+      const res = await fetch(`${issuer}/.well-known/openid-configuration`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+    });
+  }
 }
 
 main().catch((error: unknown) => {

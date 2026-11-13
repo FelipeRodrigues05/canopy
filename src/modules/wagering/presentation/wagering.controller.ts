@@ -3,6 +3,9 @@ import type { Response } from 'express';
 import { InvalidPayloadError } from '../../../shared/application/application-error';
 import { Correlation } from '../../../shared/infrastructure/correlation';
 import { CorrelationId } from '../../../shared/presentation/correlation-id.decorator';
+import type { Principal } from '../../auth/application/provider-identity.port';
+import { CurrentPrincipal, assertActsFor } from '../../auth/presentation/principal';
+import { TransactionNotFoundError } from '../application/wagering.errors';
 import { GetTransactionUseCase } from '../application/get-transaction.use-case';
 import { SubmitWagerTransactionUseCase } from '../application/submit-wager-transaction.use-case';
 import type { TransactionView } from '../application/transaction.view';
@@ -18,8 +21,16 @@ export class WageringController {
   ) {}
 
   @Get(':transactionId')
-  get(@Param('transactionId', { schema: uuidSchema }) transactionId: string): Promise<TransactionView> {
-    return this.getTransaction.byId(transactionId);
+  async get(
+    @Param('transactionId', { schema: uuidSchema }) transactionId: string,
+    @CurrentPrincipal() principal: Principal,
+  ): Promise<TransactionView> {
+    const view = await this.getTransaction.byId(transactionId);
+    // Another provider's transaction answers 404, not 403: do not confirm that an id exists.
+    if (principal.providerId !== null && principal.providerId !== view.providerId) {
+      throw new TransactionNotFoundError(`Transaction ${transactionId} not found`, { transactionId });
+    }
+    return view;
   }
 
   /**
@@ -32,8 +43,11 @@ export class WageringController {
     @Body({ schema: submitWagerSchema }) body: SubmitWagerBody,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @CorrelationId() correlationId: string,
+    @CurrentPrincipal() principal: Principal,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SubmitWagerResponse> {
+    // 403 before anything else: a provider only submits in its own name.
+    assertActsFor(principal, body.providerId, { allowInternal: false });
     const key = idempotencyKeySchema.safeParse(idempotencyKey);
     if (!key.success) {
       throw new InvalidPayloadError('Idempotency-Key header is required (1-300 printable characters)');

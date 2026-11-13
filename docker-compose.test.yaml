@@ -33,3 +33,20 @@ services:
       interval: 2s
       timeout: 5s
       retries: 60
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:58080
+      KC_HEALTH_ENABLED: "true"
+    ports: ["58080:8080"]
+    volumes:
+      - ./infra/keycloak/realm-wagering.json:/opt/keycloak/data/import/realm-wagering.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

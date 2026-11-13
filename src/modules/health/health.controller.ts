@@ -1,8 +1,11 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { Public } from '../auth/presentation/public.decorator';
 import { DatabaseHealthIndicator } from './database.health-indicator';
 import { SqsHealthIndicator } from './sqs.health-indicator';
 
+/** Open by design (README 2): orchestrators probe without credentials. */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(
