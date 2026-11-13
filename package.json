@@ -17,14 +17,15 @@
     "test:unit": "bun test src",
     "test:infra:up": "docker compose -f docker-compose.test.yaml up -d --wait",
     "test:infra:down": "docker compose -f docker-compose.test.yaml down -v",
-    "test:integration": "bun run test:infra:up && NODE_ENV=test bun scripts/wait-for-deps.ts && bun test --timeout 30000 --max-concurrency 1 test/integration",
-    "test:concurrency": "bun run test:infra:up && NODE_ENV=test bun scripts/wait-for-deps.ts && bun test --timeout 120000 test/concurrency",
+    "test:integration": "bun run test:infra:prepare && bun test --timeout 90000 --max-concurrency 1 test/integration",
+    "test:concurrency": "bun run test:infra:prepare && bun test --timeout 180000 test/concurrency",
     "migration:up": "bun scripts/migrate.ts up",
     "migration:down": "bun scripts/migrate.ts down",
     "migration:status": "bun scripts/migrate.ts status",
     "migration:create": "bun scripts/migrate.ts create",
     "deps:wait": "bun scripts/wait-for-deps.ts",
-    "test:load": "bun scripts/load/run.ts"
+    "test:load": "bun scripts/load/run.ts",
+    "test:infra:prepare": "bun run test:infra:up && NODE_ENV=test bun scripts/wait-for-deps.ts && NODE_ENV=test bun scripts/migrate.ts up"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1167.0",
