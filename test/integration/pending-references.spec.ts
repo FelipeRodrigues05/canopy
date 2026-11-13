@@ -100,17 +100,21 @@ describe('pending references (real Postgres)', () => {
     expect(await balanceOf(w.walletId)).toBe('100.00');
   });
 
-  it('backoff grows between attempts', async () => {
+  it('each failed lookup schedules the next one with exponential backoff', async () => {
     const w = await createWallet(app, '100.00');
     const res = await submit(app, wager(w, 'REFUND', '10', { referenceExternalTransactionId: 'late' }));
-    const gaps: number[] = [];
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // .env.test: base 20 ms -> attempt n waits 20 * 2^n ms (cap 100 ms)
+    for (const [attempt, expectedMs] of [[1, 40], [2, 80]] as const) {
       await sql`update wager_transactions set next_retry_at = now() where id = ${res.body.transactionId}`;
+      const before = Date.now();
       await resolver.resolveDue();
-      const [r] = await sql`select extract(epoch from (next_retry_at - now())) * 1000 as gap_ms from wager_transactions where id = ${res.body.transactionId}`;
-      gaps.push(Number(r.gap_ms));
+      const [r] = await sql`select reference_attempts, next_retry_at from wager_transactions where id = ${res.body.transactionId}`;
+      expect(r.reference_attempts).toBe(attempt);
+      // Scheduled from a clock read after `before`: the gap is at least the delay.
+      const gap = new Date(r.next_retry_at).getTime() - before;
+      expect(gap).toBeGreaterThanOrEqual(expectedMs);
+      expect(gap).toBeLessThan(expectedMs + 2000);
     }
-    expect(gaps[1]).toBeGreaterThan(gaps[0] ?? 0);
   });
 
   it('reference arrives but is rejected: the waiting REFUND ends REFERENCE_NOT_PROCESSED', async () => {
